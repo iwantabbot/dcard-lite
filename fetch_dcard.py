@@ -118,7 +118,8 @@ def simplify(p):
 
 
 def _download_images(page, posts):
-    """透過瀏覽器下載圖片到 img/ 目錄"""
+    """透過瀏覽器下載圖片到 img/ 目錄，包含內文圖片"""
+    import re
     IMG_DIR.mkdir(exist_ok=True)
     downloaded = 0
 
@@ -132,28 +133,57 @@ def _download_images(page, posts):
         } catch(e) { return null; }
     }"""
 
-    for post in posts:
-        url = post.get("thumbnail")
-        if not url:
-            continue
-        ext = "jpg"
-        if ".png" in url: ext = "png"
-        elif ".webp" in url: ext = "webp"
-        elif ".gif" in url: ext = "gif"
-
-        dest = IMG_DIR / f"{post['id']}.{ext}"
+    def download_one(url, filename):
+        nonlocal downloaded
+        dest = IMG_DIR / filename
         if dest.exists():
-            post["thumbnail"] = f"img/{post['id']}.{ext}"
-            continue
-
+            return f"img/{filename}"
         try:
             data = page.evaluate(js_template, url)
-            if data:
+            if data and len(data) > 100:
                 dest.write_bytes(bytes(data))
-                post["thumbnail"] = f"img/{post['id']}.{ext}"
                 downloaded += 1
+                return f"img/{filename}"
         except Exception:
             pass
+        return None
+
+    # 1) 縮圖 (用 orig 畫質)
+    for post in posts:
+        url = post.get("thumbnail")
+        if not url or url.startswith("img/"):
+            continue
+        orig_url = url.replace("/160", "/orig")
+        if not orig_url.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            orig_url += ".jpeg"
+        result = download_one(orig_url, f"{post['id']}.jpeg")
+        if result:
+            post["thumbnail"] = result
+
+    # 2) 內文圖片
+    img_re = re.compile(r'https://megapx-assets\.dcard\.tw/images/[a-f0-9-]+/orig(?:\.jpeg)?')
+    vid_re = re.compile(r'https://megapx-assets\.dcard\.tw/videos/')
+
+    for post in posts:
+        content = post.get("content", "")
+        if not content:
+            continue
+        urls_found = img_re.findall(content)
+        new_content = content
+        for url in urls_found:
+            clean_url = url if url.endswith(".jpeg") else url + ".jpeg"
+            # 用 URL 中的 UUID 當檔名
+            uuid_match = re.search(r'/images/([a-f0-9-]+)/', url)
+            if not uuid_match:
+                continue
+            uuid = uuid_match.group(1)
+            fname = f"{post['id']}_{uuid}.jpeg"
+            result = download_one(clean_url, fname)
+            if result:
+                new_content = new_content.replace(url, result)
+        # 移除影片 URL (無法下載)
+        new_content = vid_re.sub("data:video/placeholder;", new_content)
+        post["content"] = new_content
 
     if downloaded:
         print(f"  下載 {downloaded} 張圖片")
@@ -177,9 +207,6 @@ def run(limit=30, details=False):
         posts = [simplify(p) for p in raw]
         print(f"  取得 {len(posts)} 篇文章")
 
-        # 下載圖片
-        _download_images(page, posts)
-
         # 選擇性爬內文與留言
         if details:
             for i, post in enumerate(posts):
@@ -197,6 +224,9 @@ def run(limit=30, details=False):
                 if (i + 1) % 5 == 0:
                     print(f"  內文 {i+1}/{len(posts)}")
                 time.sleep(0.3)
+
+        # 下載圖片 (含內文圖片，需在 details 之後)
+        _download_images(page, posts)
 
         # 寫入 JSON
         out = {"fetchedAt": now.isoformat(), "count": len(posts), "posts": posts}
