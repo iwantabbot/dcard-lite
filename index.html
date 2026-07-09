@@ -193,32 +193,50 @@ function closeDrawer(){
   overlay.classList.remove('open');
   drawer.classList.remove('open');
   drawer.classList.add('closed');
+  drawer.style.transform='';
+  overlay.style.opacity='';
   document.body.style.overflow='';
 }
 
 // ESC to close
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()});
 
-// Swipe down to close (mobile) — only when scrolled to top
-let touchStartY=0, touchMoveY=0;
-drawer.addEventListener('touchstart',e=>{
-  if(drawerBody.scrollTop<=0){
-    touchStartY=e.touches[0].clientY;
-    touchMoveY=touchStartY;
+// Drag-to-dismiss (mobile) — follows finger, snaps back or closes
+let dragY0=0, dragging=false;
+function onDragStart(e){
+  if(drawerBody.scrollTop>0)return;
+  dragY0=e.touches[0].clientY;
+  dragging=true;
+  drawer.style.transition='none';
+  overlay.style.transition='none';
+}
+function onDragMove(e){
+  if(!dragging)return;
+  const dy=Math.max(0,e.touches[0].clientY-dragY0);
+  const vh=window.innerHeight;
+  const pct=Math.min(dy/(vh*0.45),1); // 0→1 over 45% of screen
+  drawer.style.transform=`translateY(${pct*100}%)`;
+  overlay.style.opacity=0.4*(1-pct);
+}
+function onDragEnd(){
+  if(!dragging)return;
+  dragging=false;
+  drawer.style.transition='';
+  overlay.style.transition='';
+  const cur=drawer.style.transform;
+  const match=cur.match(/translateY\((.+)%\)/);
+  const pct=match?parseFloat(match[1]):0;
+  if(pct>35){
+    closeDrawer();
   }else{
-    touchStartY=null;
+    drawer.style.transform='';
+    overlay.style.opacity='';
   }
-},{passive:true});
-drawer.addEventListener('touchmove',e=>{
-  if(touchStartY===null)return;
-  touchMoveY=e.touches[0].clientY;
-},{passive:true});
-drawer.addEventListener('touchend',()=>{
-  if(touchStartY===null)return;
-  const dy=touchMoveY-touchStartY;
-  if(dy>100)closeDrawer();
-  touchStartY=null;
-});
+}
+drawer.addEventListener('touchstart',onDragStart,{passive:true});
+drawer.addEventListener('touchmove',onDragMove,{passive:true});
+drawer.addEventListener('touchend',onDragEnd);
+drawer.addEventListener('touchcancel',onDragEnd);
 
 loadPosts();
 </script>
