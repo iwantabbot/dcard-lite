@@ -114,6 +114,8 @@ def simplify(p):
         "commentCount": p.get("commentCount", 0),
         "thumbnail": thumb,
         "createdAt": p.get("createdAt", ""),
+        "nsfw": p.get("nsfw", False),
+        "unsafe": p.get("unsafe", False),
     }
 
 
@@ -210,7 +212,9 @@ def run(limit=30, details=False):
             return False
 
         posts = [simplify(p) for p in raw]
-        print(f"  取得 {len(posts)} 篇文章")
+        # Filter out NSFW posts
+        posts = [p for p in posts if not p.pop("nsfw", False) and not p.pop("unsafe", False)]
+        print(f"  取得 {len(posts)} 篇文章 (已排除 NSFW)")
 
         # 選擇性爬內文與留言
         if details:
