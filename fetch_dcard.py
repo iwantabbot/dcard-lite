@@ -26,6 +26,7 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).parent
 POSTS_FILE = DATA_DIR / "posts.json"
+IMG_DIR = DATA_DIR / "img"
 API = "https://www.dcard.tw/service/api/v2"
 CST = timezone(timedelta(hours=8))
 
@@ -97,6 +98,12 @@ def _close(pw, browser):
 
 def simplify(p):
     media = p.get("media", [])
+    media_meta = p.get("mediaMeta", [])
+    thumb = None
+    if media:
+        thumb = media[0].get("url")
+    elif media_meta:
+        thumb = media_meta[0].get("thumbnail") or media_meta[0].get("url")
     return {
         "id": p.get("id"),
         "title": p.get("title", ""),
@@ -105,9 +112,51 @@ def simplify(p):
         "forumName": p.get("forumName", ""),
         "likeCount": p.get("likeCount", 0),
         "commentCount": p.get("commentCount", 0),
-        "thumbnail": media[0].get("url") if media else None,
+        "thumbnail": thumb,
         "createdAt": p.get("createdAt", ""),
     }
+
+
+def _download_images(page, posts):
+    """透過瀏覽器下載圖片到 img/ 目錄"""
+    IMG_DIR.mkdir(exist_ok=True)
+    downloaded = 0
+
+    js_template = """async (url) => {
+        try {
+            const r = await fetch(url);
+            if (!r.ok) return null;
+            const blob = await r.blob();
+            const buf = await blob.arrayBuffer();
+            return Array.from(new Uint8Array(buf));
+        } catch(e) { return null; }
+    }"""
+
+    for post in posts:
+        url = post.get("thumbnail")
+        if not url:
+            continue
+        ext = "jpg"
+        if ".png" in url: ext = "png"
+        elif ".webp" in url: ext = "webp"
+        elif ".gif" in url: ext = "gif"
+
+        dest = IMG_DIR / f"{post['id']}.{ext}"
+        if dest.exists():
+            post["thumbnail"] = f"img/{post['id']}.{ext}"
+            continue
+
+        try:
+            data = page.evaluate(js_template, url)
+            if data:
+                dest.write_bytes(bytes(data))
+                post["thumbnail"] = f"img/{post['id']}.{ext}"
+                downloaded += 1
+        except Exception:
+            pass
+
+    if downloaded:
+        print(f"  下載 {downloaded} 張圖片")
 
 
 def run(limit=30, details=False):
@@ -127,6 +176,9 @@ def run(limit=30, details=False):
 
         posts = [simplify(p) for p in raw]
         print(f"  取得 {len(posts)} 篇文章")
+
+        # 下載圖片
+        _download_images(page, posts)
 
         # 選擇性爬內文與留言
         if details:
