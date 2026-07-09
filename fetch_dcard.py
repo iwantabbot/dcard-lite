@@ -19,6 +19,7 @@ cron 範例 (每5分鐘):
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone, timedelta
@@ -249,6 +250,24 @@ def run(limit=30, details=False):
         _close(pw, browser)
 
 
+def _git_push():
+    """檢查變更並推送到 GitHub"""
+    r = subprocess.run(["git", "diff", "--quiet", "posts.json"], capture_output=True)
+    r2 = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "img/"],
+                        capture_output=True, text=True)
+    if r.returncode == 0 and not r2.stdout.strip():
+        print("  無變更，跳過推送")
+        return
+    try:
+        subprocess.run(["git", "add", "posts.json", "img/"], check=True, capture_output=True)
+        ts = datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
+        subprocess.run(["git", "commit", "-m", f"data: {ts}"], check=True, capture_output=True)
+        subprocess.run(["git", "push"], check=True, capture_output=True)
+        print(f"  已推送到 GitHub")
+    except subprocess.CalledProcessError as e:
+        print(f"  推送失敗: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Dcard 熱門爬蟲 (Chrome)")
     ap.add_argument("--limit", type=int, default=30, help="文章數量 (預設30)")
@@ -258,10 +277,12 @@ def main():
     args = ap.parse_args()
 
     if args.daemon:
-        print(f"常駐模式: 每 {args.interval}s")
+        print(f"常駐模式: 每 {args.interval}s (含推送)")
         while True:
             try:
-                run(limit=args.limit, details=not args.fast)
+                ok = run(limit=args.limit, details=not args.fast)
+                if ok:
+                    _git_push()
             except Exception as e:
                 print(f"[ERROR] {e}")
             time.sleep(args.interval)
