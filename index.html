@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dcard 熱門 Lite</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f2f2f2;--card:#fff;--text:#1a1a1a;--sub:#888;--accent:#006aa6;--border:#e0e0e0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:50;background:var(--accent);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+header h1{font-size:17px;font-weight:700}
+header .meta{font-size:11px;opacity:.75;margin-top:2px}
+.container{max-width:680px;margin:0 auto;padding:10px}
+.status{text-align:center;padding:12px;color:var(--sub);font-size:13px}
+.error{text-align:center;padding:30px 20px;color:#c00;font-size:14px;line-height:1.8}
+.error code{background:#fee;padding:2px 6px;border-radius:3px;font-size:12px}
+.post{background:var(--card);border-radius:8px;margin-bottom:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06);cursor:pointer;transition:box-shadow .15s}
+.post:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.post-inner{padding:12px 14px}
+.post-thumb{width:100%;max-height:200px;object-fit:cover;display:block;background:#eee}
+.post-header{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.forum-tag{font-size:11px;color:var(--accent);background:#e8f4f8;padding:1px 7px;border-radius:3px;font-weight:600}
+.post-title{font-size:15px;font-weight:600;line-height:1.45;margin-bottom:3px}
+.post-excerpt{font-size:13px;color:#666;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.post-footer{display:flex;align-items:center;gap:14px;margin-top:8px;font-size:12px;color:var(--sub)}
+.post-footer span{display:flex;align-items:center;gap:3px}
+.detail{display:none;border-top:1px solid var(--border);padding:14px}
+.post.open .detail{display:block}
+.content{font-size:14px;line-height:1.85;white-space:pre-wrap;margin-bottom:16px;color:#333}
+.comments-section{border-top:1px solid var(--border);padding-top:12px}
+.comments-title{font-size:13px;font-weight:600;margin-bottom:8px;color:var(--accent)}
+.comment{padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
+.comment:last-child{border-bottom:none}
+.comment-meta{font-size:11px;color:var(--sub);margin-bottom:3px}
+.comment-content{line-height:1.6;color:#444}
+.comment-likes{font-size:11px;color:var(--sub);margin-top:3px}
+.open-link{display:inline-block;margin-top:8px;font-size:13px;color:var(--accent);text-decoration:none}
+.open-link:hover{text-decoration:underline}
+.no-content{color:var(--sub);font-style:italic;font-size:13px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:480px){
+  .post-title{font-size:14px}
+  .post-excerpt{font-size:12px}
+  header h1{font-size:16px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Dcard 熱門 Lite</h1>
+    <div class="meta" id="meta"></div>
+  </div>
+</header>
+<div class="container" id="app"><div class="status"><span class="spinner"></span>載入中...</div></div>
+
+<script>
+const app = document.getElementById('app');
+const meta = document.getElementById('meta');
+
+function timeAgo(s) {
+  if (!s) return '';
+  const d = (Date.now() - new Date(s).getTime()) / 1000;
+  if (d < 60) return '剛剛';
+  if (d < 3600) return Math.floor(d/60) + ' 分鐘前';
+  if (d < 86400) return Math.floor(d/3600) + ' 小時前';
+  return Math.floor(d/86400) + ' 天前';
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function loadPosts() {
+  try {
+    const r = await fetch('posts.json');
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    render(data);
+  } catch(e) {
+    app.innerHTML = '<div class="error">無法載入資料<br><br>請確認 posts.json 存在<br>或等待爬蟲更新</div>';
+  }
+}
+
+function render(data) {
+  const posts = data.posts || [];
+  meta.textContent = '更新於 ' + timeAgo(data.fetchedAt) + ' ・ ' + posts.length + ' 篇';
+
+  app.innerHTML = posts.map(p => {
+    const hasDetail = !!(p.content || (p.comments && p.comments.length));
+    return `
+    <div class="post" id="p${p.id}" onclick="toggle(${p.id})">
+      ${p.thumbnail ? `<img class="post-thumb" src="${esc(p.thumbnail)}" loading="lazy" alt="">` : ''}
+      <div class="post-inner">
+        <div class="post-header"><span class="forum-tag">${esc(p.forumName || p.forumAlias)}</span></div>
+        <div class="post-title">${esc(p.title)}</div>
+        <div class="post-excerpt">${esc(p.excerpt)}</div>
+        <div class="post-footer">
+          <span>&#9825; ${(p.likeCount||0).toLocaleString()}</span>
+          <span>&#128172; ${(p.commentCount||0).toLocaleString()}</span>
+          <span>${timeAgo(p.createdAt)}</span>
+        </div>
+      </div>
+      <div class="detail" id="d${p.id}">${hasDetail ? '' : '<div class="status">載入中...</div>'}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggle(id) {
+  const el = document.getElementById('p'+id);
+  const det = document.getElementById('d'+id);
+  if (el.classList.contains('open')) { el.classList.remove('open'); return; }
+  el.classList.add('open');
+  if (det.dataset.done) return;
+
+  // Find post in data
+  const post = currentPosts.find(p => p.id === id);
+  if (!post) { det.innerHTML = '<div class="no-content">無資料</div>'; det.dataset.done='1'; return; }
+
+  let h = '';
+  if (post.content) {
+    h += `<div class="content">${esc(post.content)}</div>`;
+  } else {
+    h += '<div class="no-content">（無內文，請點下方連結查看）</div>';
+  }
+  h += `<a class="open-link" href="https://www.dcard.tw/f/${post.forumAlias||''}/p/${id}" target="_blank">在 Dcard 開啟全文 &#8599;</a>`;
+
+  if (post.comments && post.comments.length) {
+    h += `<div class="comments-section"><div class="comments-title">留言 (${post.comments.length})</div>`;
+    h += post.comments.map(c => `
+      <div class="comment">
+        <div class="comment-meta">B${c.floor}${c.createdAt ? ' ・ '+timeAgo(c.createdAt) : ''}</div>
+        <div class="comment-content">${esc(c.content)}</div>
+        ${c.likeCount ? `<div class="comment-likes">&#9825; ${c.likeCount}</div>` : ''}
+      </div>
+    `).join('');
+    h += '</div>';
+  }
+
+  det.innerHTML = h;
+  det.dataset.done = '1';
+}
+
+let currentPosts = [];
+const _render = render;
+render = function(data) {
+  currentPosts = data.posts || [];
+  _render(data);
+};
+
+loadPosts();
+</script>
+</body>
+</html>
