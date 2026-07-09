@@ -41,7 +41,7 @@ header .meta{font-size:11px;opacity:.75;margin-top:2px}
 }
 /* Mobile: bottom sheet */
 @media(max-width:768px){
-  .drawer{left:0;right:0;bottom:0;max-height:92vh;border-top:1px solid var(--border);border-radius:14px 14px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.12)}
+  .drawer{left:0;right:0;bottom:0;height:85vh;border-top:1px solid var(--border);border-radius:14px 14px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.12)}
   .drawer.closed{transform:translateY(100%)}
 }
 .drawer.open{transform:translate(0)}
@@ -199,13 +199,26 @@ function closeDrawer(){
 // ESC to close
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()});
 
-// Swipe down to close (mobile)
-let touchStartY=0;
-drawer.addEventListener('touchstart',e=>{touchStartY=e.touches[0].clientY},{passive:true});
-drawer.addEventListener('touchmove',e=>{
-  const dy=e.touches[0].clientY-touchStartY;
-  if(dy>80)closeDrawer();
+// Swipe down to close (mobile) — only when scrolled to top
+let touchStartY=0, touchMoveY=0;
+drawer.addEventListener('touchstart',e=>{
+  if(drawerBody.scrollTop<=0){
+    touchStartY=e.touches[0].clientY;
+    touchMoveY=touchStartY;
+  }else{
+    touchStartY=null;
+  }
 },{passive:true});
+drawer.addEventListener('touchmove',e=>{
+  if(touchStartY===null)return;
+  touchMoveY=e.touches[0].clientY;
+},{passive:true});
+drawer.addEventListener('touchend',()=>{
+  if(touchStartY===null)return;
+  const dy=touchMoveY-touchStartY;
+  if(dy>100)closeDrawer();
+  touchStartY=null;
+});
 
 loadPosts();
 </script>
