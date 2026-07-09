@@ -183,9 +183,9 @@ def _download_images(page, posts):
             fname = f"{post['id']}_{uuid}.jpeg"
             result = download_one(orig_url, fname)
             if result:
-                # Replace ALL occurrences of this image URL
+                # Replace ALL occurrences of this image URL with img tag
                 pattern = re.compile(re.escape(f"https://megapx-assets.dcard.tw/images/{uuid}/") + r'[^\s\"<>]+')
-                new_content = pattern.sub(result, new_content)
+                new_content = pattern.sub(f'<img src="{result}">', new_content)
         # 移除影片 URL (無法下載)
         new_content = vid_re.sub("data:video/placeholder;", new_content)
         post["content"] = new_content

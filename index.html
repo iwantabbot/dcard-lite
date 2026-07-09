@@ -62,6 +62,7 @@ header .meta{font-size:11px;opacity:.75;margin-top:2px}
 .drawer-meta{font-size:12px;color:var(--sub);margin-bottom:16px;display:flex;align-items:center;gap:12px}
 .drawer-meta span{display:flex;align-items:center;gap:3px}
 .drawer-content{font-size:14px;line-height:1.9;white-space:pre-wrap;color:#333;margin-bottom:20px}
+.drawer-content img{max-width:100%;border-radius:6px;margin:8px 0;display:block}
 .drawer-link{display:inline-block;font-size:13px;color:var(--accent);text-decoration:none;margin-bottom:20px}
 .drawer-link:hover{text-decoration:underline}
 .comments-header{font-size:13px;font-weight:600;color:var(--accent);border-top:1px solid var(--border);padding-top:12px;margin-bottom:10px}
@@ -121,6 +122,15 @@ function esc(s){
   return d.innerHTML;
 }
 
+function renderContent(s){
+  if(!s)return '';
+  const parts=s.split(/(<img[^>]+>)/g);
+  return parts.map(p=>{
+    if(p.startsWith('<img'))return p;
+    return esc(p);
+  }).join('');
+}
+
 async function loadPosts(){
   try{
     const r=await fetch('posts.json');
@@ -168,7 +178,7 @@ function openPost(id){
   </div>`;
 
   if(post.content){
-    h+=`<div class="drawer-content">${esc(post.content)}</div>`;
+    h+=`<div class="drawer-content">${renderContent(post.content)}</div>`;
   }else{
     h+='<div class="no-content">（無內文）</div>';
   }
