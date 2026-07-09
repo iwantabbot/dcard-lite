@@ -161,7 +161,7 @@ def _download_images(page, posts):
             post["thumbnail"] = result
 
     # 2) 內文圖片
-    img_re = re.compile(r'https://megapx-assets\.dcard\.tw/images/[a-f0-9-]+/orig(?:\.jpeg)?')
+    img_re = re.compile(r'https://megapx-assets\.dcard\.tw/images/[a-f0-9-]+/[^\s\"<>]+')
     vid_re = re.compile(r'https://megapx-assets\.dcard\.tw/videos/')
 
     for post in posts:
@@ -170,17 +170,22 @@ def _download_images(page, posts):
             continue
         urls_found = img_re.findall(content)
         new_content = content
+        seen_uuids = set()
         for url in urls_found:
-            clean_url = url if url.endswith(".jpeg") else url + ".jpeg"
-            # 用 URL 中的 UUID 當檔名
             uuid_match = re.search(r'/images/([a-f0-9-]+)/', url)
             if not uuid_match:
                 continue
             uuid = uuid_match.group(1)
+            if uuid in seen_uuids:
+                continue
+            seen_uuids.add(uuid)
+            orig_url = f"https://megapx-assets.dcard.tw/images/{uuid}/orig.jpeg"
             fname = f"{post['id']}_{uuid}.jpeg"
-            result = download_one(clean_url, fname)
+            result = download_one(orig_url, fname)
             if result:
-                new_content = new_content.replace(url, result)
+                # Replace ALL occurrences of this image URL
+                pattern = re.compile(re.escape(f"https://megapx-assets.dcard.tw/images/{uuid}/") + r'[^\s\"<>]+')
+                new_content = pattern.sub(result, new_content)
         # 移除影片 URL (無法下載)
         new_content = vid_re.sub("data:video/placeholder;", new_content)
         post["content"] = new_content
