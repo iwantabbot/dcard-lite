@@ -214,7 +214,7 @@ def _download_images(page, posts):
         print(f"  下載 {downloaded} 張圖片")
 
 
-def run(limit=30, details=False):
+def run(limit=120, details=False):
     now = datetime.now(CST)
     print(f"[{now:%Y-%m-%d %H:%M:%S}] 啟動 Chrome 爬取 Dcard 熱門...")
 
@@ -223,13 +223,29 @@ def run(limit=30, details=False):
         print("  連線 dcard.tw (等待 Cloudflare)...")
         _warm_up(page)
 
-        # 取得熱門文章列表
-        raw = _browser_fetch(page, f"{API}/posts?popular=true&limit={limit}")
-        if not raw:
+        # 分頁取得熱門文章
+        all_posts = []
+        before_id = None
+        page_size = 30
+        while len(all_posts) < limit:
+            url = f"{API}/posts?popular=true&limit={page_size}"
+            if before_id:
+                url += f"&before={before_id}"
+            raw = _browser_fetch(page, url)
+            if not raw:
+                break
+            all_posts.extend(raw)
+            before_id = raw[-1]["id"]
+            time.sleep(0.5)
+            if len(raw) < page_size:
+                break
+
+        all_posts = all_posts[:limit]
+        if not all_posts:
             print("[FAIL] API 回傳為空")
             return False
 
-        posts = [simplify(p) for p in raw]
+        posts = [simplify(p) for p in all_posts]
         # Filter out NSFW posts
         posts = [p for p in posts if not p.pop("nsfw", False) and not p.pop("unsafe", False)]
         print(f"  取得 {len(posts)} 篇文章 (已排除 NSFW)")
@@ -294,7 +310,7 @@ def _git_push():
 
 def main():
     ap = argparse.ArgumentParser(description="Dcard 熱門爬蟲 (Chrome)")
-    ap.add_argument("--limit", type=int, default=30, help="文章數量 (預設30)")
+    ap.add_argument("--limit", type=int, default=120, help="文章數量 (預設120)")
     ap.add_argument("--fast", action="store_true", help="只爬列表，不含內文留言")
     ap.add_argument("--daemon", action="store_true", help="常駐模式")
     ap.add_argument("--interval", type=int, default=300, help="爬取間隔秒 (預設300)")
