@@ -19,6 +19,7 @@ cron 範例 (每5分鐘):
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -28,6 +29,7 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent
 POSTS_FILE = DATA_DIR / "posts.json"
 IMG_DIR = DATA_DIR / "img"
+LOCK_FILE = DATA_DIR / ".crawl.lock"
 API = "https://www.dcard.tw/service/api/v2"
 CST = timezone(timedelta(hours=8))
 
@@ -215,6 +217,18 @@ def _download_images(page, posts):
 
 
 def run(limit=120, details=False):
+    # Lock: 同時只允许一个实例
+    if LOCK_FILE.exists():
+        try:
+            lock_pid = int(LOCK_FILE.read_text().strip())
+            import os
+            os.kill(lock_pid, 0)  # Check if process alive
+            print(f"[SKIP] 另一个爬虫正在运行 (PID {lock_pid})")
+            return False
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+    LOCK_FILE.write_text(str(os.getpid()))
+
     now = datetime.now(CST)
     print(f"[{now:%Y-%m-%d %H:%M:%S}] 啟動 Chrome 爬取 Dcard 熱門...")
 
@@ -291,6 +305,7 @@ def run(limit=120, details=False):
 
     finally:
         _close(pw, browser)
+        LOCK_FILE.unlink(missing_ok=True)
 
 
 def _git_push():
