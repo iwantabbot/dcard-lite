@@ -73,17 +73,29 @@ def _warm_up(page):
             break
 
 
-def _browser_fetch(page, url):
-    """在瀏覽器內 fetch API"""
+def _browser_fetch(page, url, retries=5):
+    """在瀏覽器內 fetch API，失敗重試"""
     js = f"""async () => {{
         const r = await fetch("{url}");
         if (!r.ok) return null;
-        return await r.json();
+        try {{ return await r.json(); }} catch(e) {{ return null; }}
     }}"""
-    try:
-        return page.evaluate(js)
-    except Exception:
-        return None
+    for attempt in range(retries):
+        try:
+            result = page.evaluate(js)
+            if result is not None:
+                return result
+        except Exception:
+            pass
+        if attempt < retries - 1:
+            time.sleep(2)
+            # Re-warm on retry
+            try:
+                page.evaluate("async () => { await fetch('https://www.dcard.tw/service/api/v2/posts?popular=true&limit=1'); }")
+            except Exception:
+                pass
+            time.sleep(0.5)
+    return None
 
 
 def _close(pw, browser):
@@ -163,8 +175,8 @@ def _download_images(page, posts):
         if result:
             post["thumbnail"] = result
 
-    # 2) 內文圖片
-    img_re = re.compile(r'https://megapx-assets\.dcard\.tw/images/[a-f0-9-]+/[^\s\"<>]+')
+    # 2) 內文圖片 (megapx + sticker)
+    img_re = re.compile(r'https://(?:megapx|sticker)-assets\.dcard\.tw/(?:images|stickers)/[a-f0-9-]+/[^\s\"<>]+')
     vid_re = re.compile(r'https://megapx-assets\.dcard\.tw/videos/')
 
     for post in posts:
@@ -175,19 +187,24 @@ def _download_images(page, posts):
         new_content = content
         seen_uuids = set()
         for url in urls_found:
-            uuid_match = re.search(r'/images/([a-f0-9-]+)/', url)
+            uuid_match = re.search(r'/(?:images|stickers)/([a-f0-9-]+)/', url)
             if not uuid_match:
                 continue
             uuid = uuid_match.group(1)
             if uuid in seen_uuids:
                 continue
             seen_uuids.add(uuid)
-            orig_url = f"https://megapx-assets.dcard.tw/images/{uuid}/orig.jpeg"
-            fname = f"{post['id']}_{uuid}.jpeg"
+            # Determine base URL
+            if 'sticker-assets' in url:
+                orig_url = f"https://sticker-assets.dcard.tw/stickers/{uuid}/orig.png"
+            else:
+                orig_url = f"https://megapx-assets.dcard.tw/images/{uuid}/orig.jpeg"
+            ext = "png" if "sticker" in url else "jpeg"
+            fname = f"{post['id']}_{uuid}.{ext}"
             result = download_one(orig_url, fname)
             if result:
                 # Replace ALL occurrences of this image URL with img tag
-                pattern = re.compile(re.escape(f"https://megapx-assets.dcard.tw/images/{uuid}/") + r'[^\s\"<>]+')
+                pattern = re.compile(re.escape(url.split('?')[0]))
                 new_content = pattern.sub(f'<img src="{result}">', new_content)
         # 移除影片 URL (無法下載)
         new_content = vid_re.sub("data:video/placeholder;", new_content)
@@ -233,7 +250,14 @@ def run(limit=30, details=False):
                     ]
                 if (i + 1) % 5 == 0:
                     print(f"  內文 {i+1}/{len(posts)}")
-                time.sleep(0.3)
+                # 每 10 篇重新 warm-up 避免 Cloudflare timeout
+                if (i + 1) % 10 == 0:
+                    try:
+                        page.goto("https://www.dcard.tw/f", wait_until="domcontentloaded", timeout=15000)
+                        time.sleep(1)
+                    except Exception:
+                        pass
+                time.sleep(0.8)
 
         # 下載圖片 (含內文圖片，需在 details 之後)
         _download_images(page, posts)
