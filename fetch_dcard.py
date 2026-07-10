@@ -248,7 +248,10 @@ def run(limit=120, details=False):
         posts = [simplify(p) for p in all_posts]
         # Filter out NSFW posts
         posts = [p for p in posts if not p.pop("nsfw", False) and not p.pop("unsafe", False)]
-        print(f"  取得 {len(posts)} 篇文章 (已排除 NSFW)")
+        # Sort by like count, take top 100
+        posts.sort(key=lambda p: p.get("likeCount", 0), reverse=True)
+        posts = posts[:100]
+        print(f"  取得 {len(posts)} 篇文章 (已排除 NSFW，按讚數排序)")
 
         # 選擇性爬內文與留言
         if details:
